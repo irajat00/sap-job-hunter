@@ -1,0 +1,18 @@
+{
+  "name": "SAP Job Hunter",
+  "short_name": "SAP Jobs",
+  "description": "SAP PP/QM Manufacturing job postings, collected automatically with instant alerts.",
+  "start_url": "/sap-job-hunter/?source=pwa",
+  "scope": "/sap-job-hunter/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B1E3A",
+  "theme_color": "#0B1E3A",
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

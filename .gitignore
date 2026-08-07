@@ -1,0 +1,36 @@
+# --- Secrets ---
+.env
+.env.local
+*.env
+
+# --- Database ---
+# jobs.db is intentionally NEVER committed. In the GitHub Actions
+# deployment it's persisted between runs via the GitHub Actions cache
+# instead (see .github/workflows/collect-jobs.yml's "Why jobs.db is
+# cached, not committed" note) -- only the generated
+# frontend/public/data/jobs.json snapshot is committed. Locally, your
+# own jobs.db stays on your machine as it always has.
+backend/jobs.db
+*.db-journal
+backend/backups/
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+*.egg
+
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# --- Editor / OS cruft ---
+.DS_Store
+.vscode/
+.idea/
+*.log

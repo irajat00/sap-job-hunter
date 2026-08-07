@@ -1,0 +1,107 @@
+# Runs once a day: does a FULL collector run (including the expired-
+# link sweep that collect-jobs.yml skips for speed) and then sends ONE
+# Telegram "Daily SAP Job Summary" message via scripts/daily_summary.py
+# (backend/notifiers/telegram.py's existing per-job notify_job()/
+# format_job_message() are completely untouched -- this uses a
+# separate, additive send_daily_summary() function).
+#
+# jobs.db is restored from / saved back to the GitHub Actions cache,
+# exactly like collect-jobs.yml -- see that file's "Why jobs.db is
+# cached, not committed" note. Only jobs.json is ever committed.
+#
+# Default schedule below is 21:00 UTC. GitHub Actions schedules support
+# an optional `timezone:` field (IANA name) as of March 2026 -- change
+# it to your own zone (e.g. 'Asia/Kolkata', 'Europe/Berlin',
+# 'America/New_York') so "9 PM" means your local 9 PM instead of UTC.
+name: Daily SAP job summary
+
+on:
+  schedule:
+    - cron: '0 21 * * *'
+      timezone: 'UTC'   # <-- change to your IANA timezone, e.g. 'Asia/Kolkata', for local 9 PM
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  daily-summary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Restore jobs.db from cache (most recent run)
+        uses: actions/cache/restore@v4
+        with:
+          path: backend/jobs.db
+          key: jobs-db-${{ github.run_id }}
+          restore-keys: |
+            jobs-db-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Apply database migration (idempotent)
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite:///./jobs.db
+        run: python -m app.migrate
+
+      - name: Full collector run (includes expired-link sweep)
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite:///./jobs.db
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          ADZUNA_COUNTRIES: ${{ vars.ADZUNA_COUNTRIES }}
+          JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
+          JOB_MAX_AGE_DAYS: ${{ vars.JOB_MAX_AGE_DAYS }}
+          SEARCH_KEYWORDS: ${{ vars.SEARCH_KEYWORDS }}
+          SEARCH_LOCATIONS: ${{ vars.SEARCH_LOCATIONS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m collectors.runner
+
+      - name: Regenerate static jobs.json for the frontend
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite:///./jobs.db
+          JOB_MAX_AGE_DAYS: ${{ vars.JOB_MAX_AGE_DAYS }}
+        run: python -m scripts.export_jobs_json
+
+      - name: Send daily Telegram summary
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite:///./jobs.db
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m scripts.daily_summary
+
+      - name: Save jobs.db to cache for the next run
+        uses: actions/cache/save@v4
+        with:
+          path: backend/jobs.db
+          key: jobs-db-${{ github.run_id }}
+
+      - name: Commit and push jobs.json only (never jobs.db)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add frontend/public/data/jobs.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: daily summary run $(date -u '+%Y-%m-%d')"
+            git push
+          fi
